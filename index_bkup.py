@@ -3,36 +3,27 @@ import matplotlib.pyplot as plt
 
 food_raw = pd.read_csv("eu_food_prices.csv")
 food_categories = pd.read_csv("food_categories.csv", sep=";")
-income_raw = pd.read_csv(
-    "ilc_di04.tsv", sep="\t", engine="python"
-)  # Changed separator, can apply a query along the lines of "show columns where column name contains MED_E", for example
+income_raw = pd.read_csv("ilc_di04.tsv", sep="\t|,", engine="python")
 
 # Should re-write to process dataframe first, then apply filtering (eg. country, unit, hhtype) afterwards within a function
 
-# household_income = income_raw[
-#     (income_raw["geo\\time"] == "PT")
-#     & (income_raw["unit"] == "EUR")
-#     & (income_raw["indic_il"] == "MEI_E")
-#     & (income_raw["hhtyp"] == "TOTAL")
-# ]
-# print(income_raw.head())
+household_income = income_raw[
+    (income_raw["geo\\time"] == "PT")
+    & (income_raw["unit"] == "EUR")
+    & (income_raw["indic_il"] == "MEI_E")
+    & (income_raw["hhtyp"] == "TOTAL")
+]
 
-household_income = income_raw.transpose()
-household_income.columns = household_income.iloc[0]
-household_income = household_income[1:]
-household_income = household_income.reset_index(drop=False)
-household_income.columns = household_income.columns.str.strip()
-household_income.rename(columns={household_income.columns[0]: "Time"}, inplace=True)
-household_income.columns.name = None
-# household_income.columns.str.strip()
-
-my_income = household_income.filter(regex=r"\AA1,.*?,.*?,PT$")
-# print(my_income.head())
-
+household_income = household_income.transpose()
+household_income = household_income.iloc[4:].reset_index()
+household_income.columns = ["Time", "Income"]
+household_income["Income"] = pd.to_numeric(
+    household_income["Income"].str.replace("b", "").str.strip(), errors="coerce"
+)
 
 household_income["Time"] = household_income["Time"].str.strip()
 household_income["Time"] = pd.to_datetime(household_income["Time"], format="%Y")
-
+household_income.sort_values(by="Time", inplace=True)
 filled_years = pd.DataFrame(
     {
         "Time": pd.date_range(
@@ -50,23 +41,14 @@ parsed_income = pd.merge(
     how="left",
 )
 parsed_income = parsed_income.drop(columns=["key_0", "Time_y"])
-parsed_income["Time_x"] = pd.to_datetime(parsed_income["Time_x"].dt.year, format="%Y")
-
-print(parsed_income.head(22))
-
-# Next - need to apply the below to the data in every column except "Time_x"
-household_income["Income"] = pd.to_numeric(
-    household_income["Income"].str.replace("b", "").str.strip(), errors="coerce"
+parsed_income["Income"].fillna(
+    parsed_income["Income"].interpolate(method="linear"), inplace=True
 )
-##################
 
 
-########## This code can go into after we filter to our chosen column ##########
-# parsed_income["Income"].fillna(
-#     parsed_income["Income"].interpolate(method="linear"), inplace=True
-# )
-# household_income.columns = ["Time", "Income"]
-#################################################################################
+# Change the date to the first day of the year
+parsed_income["Time_x"] = pd.to_datetime(parsed_income["Time_x"].dt.year, format="%Y")
+parsed_income.columns = ["Time", "Income"]
 
 food_prices = food_raw[food_raw["indx"] == "HICP"]
 food_prices = pd.merge(
